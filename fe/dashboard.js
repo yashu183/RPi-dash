@@ -120,26 +120,47 @@ function updateMemoryInfo(data) {
 }
 
 /**
- * Update storage information for root partition
+ * Update storage information for root and boot partitions
  */
 function updateStorageInfo(data) {
-    // Find root partition data
-    const rootPartition = data.disk.devices.find(device =>
-        device.children && device.children.some(child => child.mountpoint === '/')
-    )?.children.find(child => child.mountpoint === '/');
+    // Find all relevant partitions (root and boot)
+    const relevantPartitions = [];
 
-    if (rootPartition) {
-        const diskUsedGB = rootPartition.usage.used;
-        const diskFreeGB = rootPartition.usage.free;
-        const diskPercent = rootPartition.usage.percent;
+    data.disk.devices.forEach(device => {
+        if (device.children) {
+            device.children.forEach(child => {
+                if (child.mountpoint === '/' || (child.mountpoint && child.mountpoint.startsWith('/boot'))) {
+                    relevantPartitions.push(child);
+                }
+            });
+        }
+    });
 
-        document.getElementById('diskUsed').textContent = `${diskUsedGB.toFixed(1)} GB`;
-        document.getElementById('diskFree').textContent = `${diskFreeGB.toFixed(1)} GB`;
-        document.getElementById('diskBar').style.width = `${diskPercent}%`;
-        document.getElementById('diskPercent').textContent = `${diskPercent.toFixed(1)}%`;
+    if (relevantPartitions.length > 0) {
+        // Combine usage statistics from all relevant partitions
+        let totalUsed = 0;
+        let totalFree = 0;
+        let totalSize = 0;
+
+        relevantPartitions.forEach(partition => {
+            if (partition.usage) {
+                totalUsed += partition.usage.used;
+                totalFree += partition.usage.free;
+                totalSize += partition.usage.total;
+            }
+        });
+
+        const combinedPercent = totalSize > 0 ? (totalUsed / totalSize) * 100 : 0;
+
+        document.getElementById('diskUsed').textContent = `${totalUsed.toFixed(1)} GB`;
+        document.getElementById('diskFree').textContent = `${totalFree.toFixed(1)} GB`;
+        document.getElementById('diskTotal').textContent = `${totalSize.toFixed(1)} GB`;
+        document.getElementById('diskBar').style.width = `${combinedPercent}%`;
+        document.getElementById('diskPercent').textContent = `${combinedPercent.toFixed(1)}%`;
     } else {
         document.getElementById('diskUsed').textContent = 'N/A';
         document.getElementById('diskFree').textContent = 'N/A';
+        document.getElementById('diskTotal').textContent = 'N/A';
         document.getElementById('diskBar').style.width = '0%';
         document.getElementById('diskPercent').textContent = '0%';
     }
