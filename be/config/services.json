@@ -1,0 +1,24 @@
+{
+  "services": [
+    {
+      "name": "ssh",
+      "display_name": "SSH Server",
+      "description": "Secure Shell daemon for remote access"
+    },
+    {
+      "name": "nginx",
+      "display_name": "Nginx",
+      "description": "Web server and reverse proxy"
+    },
+    {
+      "name": "docker",
+      "display_name": "Docker",
+      "description": "Container runtime platform"
+    },
+    {
+      "name": "cloudflared",
+      "display_name": "Cloudflared",
+      "description": "Cloudflare tunnel daemon"
+    }
+  ]
+}

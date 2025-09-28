@@ -14,9 +14,35 @@ import datetime
 import os
 import docker
 import time
+from pathlib import Path
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for web dashboard
+
+# Default services list used as fallback
+DEFAULT_SERVICES = [
+    {'name': 'ssh', 'display_name': 'SSH Server', 'description': 'Secure Shell daemon for remote access'},
+    {'name': 'nginx', 'display_name': 'Nginx', 'description': 'Web server and reverse proxy'},
+    {'name': 'docker', 'display_name': 'Docker', 'description': 'Container runtime platform'},
+    {'name': 'cloudflared', 'display_name': 'Cloudflared', 'description': 'Cloudflare tunnel daemon'}
+]
+
+def load_services_config():
+    """Load services configuration from JSON file"""
+    config_path = Path(__file__).parent / 'config' / 'services.json'
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            services = config.get('services')
+            if services is None:
+                print("Warning: 'services' key not found in config file")
+                print("Using default services list")
+                return DEFAULT_SERVICES
+            return services
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"Warning: Could not load services config ({e})")
+        print("Using default services list")
+        return DEFAULT_SERVICES
 
 def get_cpu_temperature():
     """Get CPU temperature from thermal zone"""
@@ -313,21 +339,19 @@ def get_cloudflared_info():
 @app.route('/api/services')
 def get_services_status():
     """Get status of important services"""
-    services = [
-        'ssh',
-        'nginx',
-        'docker',
-        'cloudflared'
-    ]
-    
+    services_config = load_services_config()
+
     service_status = []
-    for service in services:
-        status = get_service_status(service)
+    for service_config in services_config:
+        service_name = service_config['name']
+        status = get_service_status(service_name)
         service_status.append({
-            'name': service,
+            'name': service_name,
+            'display_name': service_config.get('display_name', service_name),
+            'description': service_config.get('description', ''),
             'status': status
         })
-    
+
     return jsonify(service_status)
 
 @app.route('/api/all')
