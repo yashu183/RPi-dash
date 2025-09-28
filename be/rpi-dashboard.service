@@ -7,12 +7,16 @@ Type=exec
 User=pi
 Group=pi
 WorkingDirectory=/home/pi/RPi-dash/be
-Environment=PATH=/home/pi/RPi-dash/be/.venv/bin
+Environment=PATH=/home/pi/RPi-dash/be/.venv/bin:/usr/bin:/bin
 ExecStart=/home/pi/RPi-dash/be/.venv/bin/gunicorn --config gunicorn.conf.py server:app
 ExecReload=/bin/kill -s HUP $MAINPID
 KillMode=mixed
 TimeoutStopSec=5
-PrivateTmp=true
+# Remove PrivateTmp to allow better system access
+# PrivateTmp=true
+# Allow access to system D-Bus for systemctl
+PrivateNetwork=false
+NoNewPrivileges=false
 Restart=on-failure
 RestartSec=10
 
