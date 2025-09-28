@@ -15,6 +15,7 @@ import os
 import docker
 import time
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for web dashboard
@@ -356,17 +357,33 @@ def get_services_status():
 
 @app.route('/api/all')
 def get_all_data():
-    """Get all system data in one request"""
+    """Get all system data in one request using parallel execution"""
     try:
-        return jsonify({
-            'system': get_system_info().get_json(),
-            'cpu': get_cpu_info().get_json(),
-            'memory': get_memory_info().get_json(),
-            'disk': get_disk_info().get_json(),
-            'docker': get_docker_info(),
-            'cloudflared': get_cloudflared_status(),
-            'services': get_services_status().get_json()
-        })
+        # Execute functions with proper Flask app context
+        def run_with_context(func):
+            with app.app_context():
+                return func()
+
+        with ThreadPoolExecutor(max_workers=7) as executor:
+            # Submit all tasks to thread pool with app context
+            system_future = executor.submit(run_with_context, lambda: get_system_info().get_json())
+            cpu_future = executor.submit(run_with_context, lambda: get_cpu_info().get_json())
+            memory_future = executor.submit(run_with_context, lambda: get_memory_info().get_json())
+            disk_future = executor.submit(run_with_context, lambda: get_disk_info().get_json())
+            docker_future = executor.submit(run_with_context, get_docker_info)
+            cloudflared_future = executor.submit(run_with_context, get_cloudflared_status)
+            services_future = executor.submit(run_with_context, lambda: get_services_status().get_json())
+
+            # Collect results
+            return jsonify({
+                'system': system_future.result(),
+                'cpu': cpu_future.result(),
+                'memory': memory_future.result(),
+                'disk': disk_future.result(),
+                'docker': docker_future.result(),
+                'cloudflared': cloudflared_future.result(),
+                'services': services_future.result()
+            })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
