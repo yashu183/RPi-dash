@@ -10,7 +10,7 @@ docker run -d \
   --name rpi-dashboard-api \
   --restart unless-stopped \
   -p 5555:5555 \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v /sys/class/thermal:/sys/class/thermal:ro \
   -v /proc:/proc \
   -v $(pwd)/be/config:/app/config:ro \
