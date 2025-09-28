@@ -16,8 +16,8 @@ max_requests = 1000
 max_requests_jitter = 50
 
 # Logging
-accesslog = "logs/access.log"
-errorlog = "logs/error.log"
+accesslog = "-"  # stdout
+errorlog = "-"   # stderr
 loglevel = "info"
 access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
 
@@ -25,8 +25,8 @@ access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"
 proc_name = "rpi-dashboard"
 
 # Daemon mode (uncomment for background running)
-daemon = True
-pidfile = "logs/gunicorn.pid"
+# daemon = True  # Disabled for systemd - systemd manages the process
+# pidfile = "logs/gunicorn.pid"  # Disabled for systemd - not needed
 
 # User/group to run as (uncomment and modify as needed)
 # user = "pi"
