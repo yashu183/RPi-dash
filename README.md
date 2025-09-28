@@ -77,23 +77,67 @@ Replace `YOUR_PI_IP` with your Raspberry Pi's IP address.
 
 ## 🏃‍♂️ Running the Application
 
-### Start the Backend Server
+### Development Mode
 ```bash
 cd be
 source .venv/bin/activate  # If using virtual environment
 python server.py
 ```
 
+### Production Mode
+
+#### Option 1: Gunicorn Daemon (Recommended)
+```bash
+cd be
+source .venv/bin/activate
+pip install -r requirements.txt  # Includes gunicorn
+mkdir -p logs
+gunicorn --config gunicorn.conf.py server:app
+```
+*Runs in background automatically with daemon mode enabled*
+
+#### Option 2: As a System Service
+```bash
+# Copy service file to systemd
+sudo cp be/rpi-dashboard.service /etc/systemd/system/
+
+# Edit paths in service file to match your installation
+sudo nano /etc/systemd/system/rpi-dashboard.service
+
+# Enable and start the service
+sudo systemctl daemon-reload
+sudo systemctl enable rpi-dashboard
+sudo systemctl start rpi-dashboard
+
+# Check status
+sudo systemctl status rpi-dashboard
+
+```
+This option will automatically run the server when PI reboots but `gunicorn` option does not.
+
+#### Process Management (Daemon Mode)
+```bash
+# Check if running
+ps aux | grep gunicorn
+
+# Stop daemon
+kill $(cat be/logs/gunicorn.pid)
+
+# View logs
+tail -f be/logs/access.log
+tail -f be/logs/error.log
+```
+
 The API server will start on `http://0.0.0.0:5555`
 
 ### Access the Dashboard
-1. Open `fe/dash.html` in any modern web browser
+1. Open `fe/dashboard.html` in any modern web browser
 2. Or serve it via a web server:
    ```bash
    cd fe
    python3 -m http.server 8000
    ```
-   Then navigate to `http://localhost:8000/dash.html`
+   Then navigate to `http://localhost:8000/dashboard.html`
 
 ## 📡 API Endpoints
 
@@ -136,7 +180,7 @@ Any systemd service can be monitored by adding a new service object to this JSON
 ### Customizing the Dashboard
 
 #### Frontend Styling
-- Edit Tailwind classes in `fe/dash.html`
+- Edit Tailwind classes in `fe/dashboard.html`
 - Modify the color scheme in the CSS variables
 - Adjust refresh intervals in `fe/dashboard.js` (line 310: `setInterval(updateDashboard, 30000)`)
 
@@ -151,61 +195,6 @@ Any systemd service can be monitored by adding a new service object to this JSON
 - **Host Binding**: Modify host binding (default: `0.0.0.0` for all interfaces)
 - **Custom Metrics**: Add custom metrics endpoints as needed
 - **Fallback**: If config file is missing or invalid, uses built-in default services list
-
-## 🐳 Docker Deployment
-
-### Backend in Docker Container
-
-#### Build and Run
-```bash
-# Make script executable
-chmod +x docker-run.sh
-
-# Build and start the container
-./docker-run.sh
-```
-
-#### Manual Docker Commands
-```bash
-# Build the image
-docker build -t rpi-dashboard-api .
-
-# Run the container
-docker run -d \
-  --name rpi-dashboard-api \
-  --restart unless-stopped \
-  -p 5555:5555 \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -v /sys/class/thermal:/sys/class/thermal:ro \
-  -v /proc:/proc:ro \
-  -v $(pwd)/be/config:/app/config:ro \
-  -v $(pwd)/be/logs:/app/logs \
-  --cap-add SYS_ADMIN \
-  --device /dev/mem:/dev/mem:ro \
-  rpi-dashboard-api
-```
-
-#### Volume Explanations
-- `/sys/class/thermal` - CPU temperature monitoring
-- `/proc` - System uptime and process information
-- `/var/run/docker.sock` - Docker container monitoring
-- `be/config` - Services configuration file
-- `be/logs` - Persistent logging
-
-#### Container Management
-```bash
-# Check status
-docker ps
-
-# View logs
-docker logs rpi-dashboard-api
-
-# Stop container
-docker stop rpi-dashboard-api
-
-# Remove container
-docker rm rpi-dashboard-api
-```
 
 ## 🔧 Troubleshooting
 

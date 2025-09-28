@@ -25,8 +25,8 @@ access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"
 proc_name = "rpi-dashboard"
 
 # Daemon mode (uncomment for background running)
-# daemon = True
-# pidfile = "logs/gunicorn.pid"
+daemon = True
+pidfile = "logs/gunicorn.pid"
 
 # User/group to run as (uncomment and modify as needed)
 # user = "pi"

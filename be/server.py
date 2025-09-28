@@ -382,4 +382,5 @@ if __name__ == '__main__':
     print("Starting Raspberry Pi Dashboard API Server...")
     print("Access the API at: http://localhost:5555")
     print("Health check: http://localhost:5555/api/health")
+    print("For production, use: gunicorn --config gunicorn.conf.py server:app")
     app.run(host='0.0.0.0', port=5555, debug=False)
