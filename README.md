@@ -152,19 +152,59 @@ Any systemd service can be monitored by adding a new service object to this JSON
 - **Custom Metrics**: Add custom metrics endpoints as needed
 - **Fallback**: If config file is missing or invalid, uses built-in default services list
 
-## 🐳 Docker Support (Optional)
+## 🐳 Docker Deployment
 
-The application can monitor Docker containers but doesn't require Docker to run. If you want to containerize the dashboard itself:
+### Backend in Docker Container
 
-```dockerfile
-# Example Dockerfile for the backend
-FROM python:3.9-slim
-WORKDIR /app
-COPY be/requirements.txt .
-RUN pip install -r requirements.txt
-COPY be/ .
-EXPOSE 5555
-CMD ["python", "server.py"]
+#### Build and Run
+```bash
+# Make script executable
+chmod +x docker-run.sh
+
+# Build and start the container
+./docker-run.sh
+```
+
+#### Manual Docker Commands
+```bash
+# Build the image
+docker build -t rpi-dashboard-api .
+
+# Run the container
+docker run -d \
+  --name rpi-dashboard-api \
+  --restart unless-stopped \
+  -p 5555:5555 \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /sys/class/thermal:/sys/class/thermal:ro \
+  -v /proc:/proc:ro \
+  -v $(pwd)/be/config:/app/config:ro \
+  -v $(pwd)/be/logs:/app/logs \
+  --cap-add SYS_ADMIN \
+  --device /dev/mem:/dev/mem:ro \
+  rpi-dashboard-api
+```
+
+#### Volume Explanations
+- `/sys/class/thermal` - CPU temperature monitoring
+- `/proc` - System uptime and process information
+- `/var/run/docker.sock` - Docker container monitoring
+- `be/config` - Services configuration file
+- `be/logs` - Persistent logging
+
+#### Container Management
+```bash
+# Check status
+docker ps
+
+# View logs
+docker logs rpi-dashboard-api
+
+# Stop container
+docker stop rpi-dashboard-api
+
+# Remove container
+docker rm rpi-dashboard-api
 ```
 
 ## 🔧 Troubleshooting
