@@ -2,6 +2,12 @@
 
 A lightweight, real-time dashboard for monitoring Raspberry Pi system metrics and services. Built with a clean separation between frontend and backend, this dashboard provides essential system monitoring in an elegant web interface.
 
+## 📸 Preview
+
+![Raspberry Pi Dashboard](./images/image.png)
+
+*Real-time responsive dashboard showing system metrics, CPU temperature, memory usage, storage devices, Docker status, and service monitoring*
+
 ## 🎯 Features
 
 ### System Monitoring
