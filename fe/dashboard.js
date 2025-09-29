@@ -81,26 +81,26 @@ function updateCPUInfo(data) {
     const cpuUsage = data.cpu.usage;
 
     if (cpuTemp !== null) {
-        document.getElementById('cpuTemp').textContent = `${cpuTemp}°C`;
-        // Color coding for CPU temp
         const tempElement = document.getElementById('cpuTemp');
+        tempElement.textContent = `${cpuTemp}°C`;
+        // Simple color coding for CPU temp
         if (cpuTemp > 70) {
-            tempElement.className = 'font-mono text-red-400';
+            tempElement.className = 'status-error';
         } else if (cpuTemp > 60) {
-            tempElement.className = 'font-mono text-yellow-400';
+            tempElement.className = 'status-warn';
         } else {
-            tempElement.className = 'font-mono text-green-400';
+            tempElement.className = '';
         }
     } else {
         document.getElementById('cpuTemp').textContent = 'N/A';
-        document.getElementById('cpuTemp').className = 'font-mono text-gray-400';
     }
 
-    document.getElementById('cpuUsage').textContent = `${cpuUsage}%`;
     document.getElementById('cpuCores').textContent = data.cpu.cores;
     document.getElementById('cpuFreq').textContent = `${data.cpu.frequency} MHz`;
-    document.getElementById('cpuBar').style.width = `${cpuUsage}%`;
     document.getElementById('cpuPercent').textContent = `${cpuUsage}%`;
+    
+    // Update modern progress bar
+    document.getElementById('cpuBar').style.width = `${cpuUsage}%`;
 }
 
 /**
@@ -115,8 +115,10 @@ function updateMemoryInfo(data) {
     document.getElementById('memUsed').textContent = `${memUsedGB.toFixed(2)} GB`;
     document.getElementById('memFree').textContent = `${memAvailableGB.toFixed(2)} GB`;
     document.getElementById('memTotal').textContent = `${memTotalGB.toFixed(2)} GB`;
-    document.getElementById('memBar').style.width = `${memPercent}%`;
     document.getElementById('memPercent').textContent = `${memPercent.toFixed(1)}%`;
+    
+    // Update modern progress bar
+    document.getElementById('memBar').style.width = `${memPercent}%`;
 }
 
 /**
@@ -155,14 +157,18 @@ function updateStorageInfo(data) {
         document.getElementById('diskUsed').textContent = `${totalUsed.toFixed(1)} GB`;
         document.getElementById('diskFree').textContent = `${totalFree.toFixed(1)} GB`;
         document.getElementById('diskTotal').textContent = `${totalSize.toFixed(1)} GB`;
-        document.getElementById('diskBar').style.width = `${combinedPercent}%`;
         document.getElementById('diskPercent').textContent = `${combinedPercent.toFixed(1)}%`;
+        
+        // Update modern progress bar
+        document.getElementById('diskBar').style.width = `${combinedPercent}%`;
     } else {
         document.getElementById('diskUsed').textContent = 'N/A';
         document.getElementById('diskFree').textContent = 'N/A';
         document.getElementById('diskTotal').textContent = 'N/A';
-        document.getElementById('diskBar').style.width = '0%';
         document.getElementById('diskPercent').textContent = '0%';
+        
+        // Update modern progress bar
+        document.getElementById('diskBar').style.width = '0%';
     }
 }
 
@@ -170,33 +176,45 @@ function updateStorageInfo(data) {
  * Update Docker status and container information
  */
 function updateDockerInfo(data) {
-    const dockerStatusEl = document.getElementById('dockerStatus');
     const dockerStatusText = document.getElementById('dockerStatusText');
 
     if (data.docker.status === 'running') {
-        dockerStatusEl.className = 'w-3 h-3 bg-green-500 rounded-full animate-pulse-slow';
         dockerStatusText.textContent = 'Running';
-        dockerStatusText.className = 'text-green-400';
+        dockerStatusText.className = 'text-emerald-400 font-medium font-mono text-sm';
     } else if (data.docker.status === 'stopped') {
-        dockerStatusEl.className = 'w-3 h-3 bg-red-500 rounded-full';
         dockerStatusText.textContent = 'Stopped';
-        dockerStatusText.className = 'text-red-400';
+        dockerStatusText.className = 'text-red-400 font-medium font-mono text-sm';
     } else {
-        dockerStatusEl.className = 'w-3 h-3 bg-gray-500 rounded-full';
         dockerStatusText.textContent = 'Unknown';
-        dockerStatusText.className = 'text-gray-400';
+        dockerStatusText.className = 'text-gray-400 font-medium font-mono text-sm';
     }
 
-    document.getElementById('dockerContainers').textContent = data.docker.containers;
-    document.getElementById('dockerRunning').textContent = data.docker.running;
+    // Update container counts with colors
+    const dockerContainersEl = document.getElementById('dockerContainers');
+    const dockerRunningEl = document.getElementById('dockerRunning');
+    
+    const totalContainers = data.docker.containers || 0;
+    const runningContainers = data.docker.running || 0;
+    const stoppedContainers = totalContainers - runningContainers;
+    
+    dockerContainersEl.textContent = totalContainers;
+    dockerContainersEl.className = 'text-white font-medium font-mono text-sm';
+    
+    // Show running containers in green
+    dockerRunningEl.innerHTML = `<span class="text-emerald-400">${runningContainers}</span>`;
+    
+    // Add stopped/exited containers display if there are any
+    if (stoppedContainers > 0) {
+        dockerRunningEl.innerHTML += ` / <span class="text-red-400">${stoppedContainers} stopped</span>`;
+    }
 
     // Show Docker error if present
     const dockerErrorEl = document.getElementById('dockerError');
     if (data.docker.error) {
         dockerErrorEl.textContent = data.docker.error;
-        dockerErrorEl.classList.remove('hidden');
+        dockerErrorEl.style.display = 'block';
     } else {
-        dockerErrorEl.classList.add('hidden');
+        dockerErrorEl.style.display = 'none';
     }
 }
 
@@ -204,21 +222,17 @@ function updateDockerInfo(data) {
  * Update Cloudflared tunnel status
  */
 function updateCloudflaredInfo(data) {
-    const cloudflaredStatusEl = document.getElementById('cloudflaredStatus');
     const cloudflaredStatusText = document.getElementById('cloudflaredStatusText');
 
     if (data.cloudflared.status === 'connected') {
-        cloudflaredStatusEl.className = 'w-3 h-3 bg-green-500 rounded-full animate-pulse-slow';
         cloudflaredStatusText.textContent = 'Connected';
-        cloudflaredStatusText.className = 'text-green-400';
+        cloudflaredStatusText.className = 'text-emerald-400 font-medium font-mono text-sm';
     } else if (data.cloudflared.status === 'disconnected') {
-        cloudflaredStatusEl.className = 'w-3 h-3 bg-red-500 rounded-full';
         cloudflaredStatusText.textContent = 'Disconnected';
-        cloudflaredStatusText.className = 'text-red-400';
+        cloudflaredStatusText.className = 'text-red-400 font-medium font-mono text-sm';
     } else {
-        cloudflaredStatusEl.className = 'w-3 h-3 bg-gray-500 rounded-full';
         cloudflaredStatusText.textContent = 'Unknown';
-        cloudflaredStatusText.className = 'text-gray-400';
+        cloudflaredStatusText.className = 'text-gray-400 font-medium font-mono text-sm';
     }
 
     document.getElementById('cloudflaredTunnel').textContent = data.cloudflared.tunnel;
@@ -234,28 +248,33 @@ function updateServicesInfo(data) {
 
     data.services.forEach(service => {
         const serviceEl = document.createElement('div');
-        serviceEl.className = 'flex justify-between items-center p-4 bg-gray-700/30 backdrop-blur-sm rounded-lg border border-gray-600/30 hover:bg-gray-600/40 transition-all duration-300';
+        serviceEl.className = 'bg-black/20 border border-white/10 rounded-lg p-3 flex justify-between items-center hover:bg-black/30 transition-colors duration-200';
 
-        let statusClass, statusIcon;
+        let statusDot, statusText;
+        
+        // Simple status indicators
         switch(service.status) {
             case 'running':
             case 'active':
-                statusClass = 'text-green-400';
-                statusIcon = '●';
+                statusDot = '<div class="w-2 h-2 bg-emerald-500 rounded-full"></div>';
+                statusText = '<span class="text-emerald-400 font-medium text-xs">Running</span>';
                 break;
             case 'stopped':
             case 'inactive':
-                statusClass = 'text-red-400';
-                statusIcon = '○';
+                statusDot = '<div class="w-2 h-2 bg-red-500 rounded-full"></div>';
+                statusText = '<span class="text-red-400 font-medium text-xs">Stopped</span>';
                 break;
             default:
-                statusClass = 'text-gray-400';
-                statusIcon = '?';
+                statusDot = '<div class="w-2 h-2 bg-gray-500 rounded-full"></div>';
+                statusText = '<span class="text-gray-400 font-medium text-xs">Unknown</span>';
         }
 
         serviceEl.innerHTML = `
-            <span>${service.name}</span>
-            <span class="${statusClass}">${statusIcon} ${service.status}</span>
+            <span class="text-white font-medium text-sm">${service.display_name}</span>
+            <div class="flex items-center gap-2">
+                ${statusDot}
+                ${statusText}
+            </div>
         `;
         servicesList.appendChild(serviceEl);
     });
@@ -266,52 +285,73 @@ function updateServicesInfo(data) {
  */
 function updateDiskDevicesInfo(data) {
     const diskDevicesList = document.getElementById('diskDevicesList');
-    diskDevicesList.innerHTML = '';
+    let html = `
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-gray-400 border-b border-white/10">
+                        <th class="text-left py-3 font-medium">Device</th>
+                        <th class="text-left py-3 font-medium">Size</th>
+                        <th class="text-left py-3 font-medium">Mount Point</th>
+                        <th class="text-left py-3 font-medium">Usage</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
 
     data.disk.devices.filter(device => !device.name.startsWith('mmcblk')).forEach(device => {
-        const deviceEl = document.createElement('div');
-        deviceEl.className = 'bg-gray-700/30 backdrop-blur-sm rounded-xl p-5 border border-gray-600/30 hover:border-gray-500/50 transition-all duration-300';
-
-        let deviceInfo = `
-            <div class="flex justify-between items-center mb-3">
-                <h3 class="text-lg font-medium">${device.name}</h3>
-                <span class="text-sm text-gray-400">${device.size}</span>
-            </div>
+        html += `
+            <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                <td class="py-3 text-white font-mono font-semibold">${device.name}</td>
+                <td class="py-3 text-gray-300">${device.size}</td>
+            </tr>
         `;
-
+        
         if (device.children && device.children.length > 0) {
             device.children.forEach(partition => {
                 const usage = partition.usage;
-                const usagePercent = usage ? usage.percent : 0;
+                const usagePercent = usage ? parseFloat(usage.percent.toFixed(1)) : 0;
                 const mountpoint = partition.mountpoint || 'Not mounted';
-
-                deviceInfo += `
-                    <div class="mb-3 p-4 bg-gray-600/40 backdrop-blur-sm rounded-lg border border-gray-500/20">
-                        <div class="flex justify-between items-center mb-2">
-                            <span class="font-medium">${partition.name}</span>
-                            <span class="text-sm text-gray-300">${partition.size}</span>
-                        </div>
-                        <div class="text-sm text-gray-400 mb-2">
-                            Mount: ${mountpoint}
-                        </div>
-                        ${usage ? `
-                            <div class="flex justify-between text-sm mb-1">
-                                <span>Used: ${usage.used.toFixed(1)}GB</span>
-                                <span>Free: ${usage.free.toFixed(1)}GB</span>
+                const usageText = usage ? `${usage.used.toFixed(1)}GB / ${usage.total.toFixed(1)}GB` : 'No data';
+                
+                // Determine progress bar color based on usage percentage
+                let progressColor = 'from-emerald-500 to-emerald-600'; // Default green
+                if (usagePercent > 80) {
+                    progressColor = 'from-red-500 to-red-600'; // High usage - red
+                } else if (usagePercent > 60) {
+                    progressColor = 'from-amber-500 to-orange-600'; // Medium usage - orange
+                } else if (usagePercent > 40) {
+                    progressColor = 'from-yellow-500 to-yellow-600'; // Low-medium usage - yellow
+                }
+                
+                html += `
+                    <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                        <td class="py-4 text-gray-300 font-mono pl-4">├─ ${partition.name}</td>
+                        <td class="py-4 text-gray-300">${partition.size}</td>
+                        <td class="py-4 text-gray-400">${mountpoint}</td>
+                        <td class="py-4">
+                            <div class="space-y-2">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-300 font-mono text-xs">${usageText}</span>
+                                    <span class="text-white font-medium text-xs">${usagePercent}%</span>
+                                </div>
+                                ${usage ? `
+                                <div class="w-full h-2 bg-white/10 rounded-full overflow-hidden relative">
+                                    <div class="h-full bg-gradient-to-r ${progressColor} rounded-full transition-all duration-700 ease-out relative" style="width: ${usagePercent}%">
+                                        <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+                                    </div>
+                                </div>
+                                ` : '<div class="text-gray-500 text-xs">No usage data</div>'}
                             </div>
-                            <div class="w-full bg-gray-800/50 rounded-full h-2.5 shadow-inner">
-                                <div class="bg-gradient-to-r from-cyan-400 to-blue-500 h-2.5 rounded-full transition-all duration-500" style="width: ${usagePercent}%"></div>
-                            </div>
-                            <div class="text-xs text-gray-400 mt-1">${usagePercent.toFixed(1)}% used</div>
-                        ` : '<div class="text-sm text-gray-400">No usage data</div>'}
-                    </div>
+                        </td>
+                    </tr>
                 `;
             });
         }
-
-        deviceEl.innerHTML = deviceInfo;
-        diskDevicesList.appendChild(deviceEl);
     });
+    
+    html += '</tbody></table></div>';
+    diskDevicesList.innerHTML = html;
 }
 
 /**
@@ -338,7 +378,11 @@ async function updateDashboard() {
     // Only show refresh button loading state if not first load
     if (!isFirstLoad) {
         refreshBtn.disabled = true;
-        refreshBtn.textContent = 'Loading...';
+        refreshBtn.innerHTML = `
+            <svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+        `;
     }
 
     try {
@@ -365,7 +409,11 @@ async function updateDashboard() {
         // Only update refresh button if not first load
         if (!isFirstLoad) {
             refreshBtn.disabled = false;
-            refreshBtn.textContent = 'Refresh Data';
+            refreshBtn.innerHTML = `
+                <svg class="w-5 h-5 transition-transform duration-300 group-hover:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+            `;
         }
     }
 }

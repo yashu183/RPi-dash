@@ -4,260 +4,268 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Raspberry Pi 4B Dashboard</title>
-    <link rel="icon" href="./static/images/dashboard.svg" sizes="any" type="image/svg+xml">
+    <link rel="icon" href="./static/images/dashboard.png" sizes="any" type="image/svg+xml">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
+                    fontFamily: {
+                        'sans': ['Inter', 'ui-sans-serif', 'system-ui'],
+                    },
+                    colors: {
+                        'custom-dark': '#101114',
+                    },
                     animation: {
-                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                        'fade-in': 'fadeIn 0.5s ease-in-out',
-                        'slide-up': 'slideUp 0.3s ease-out'
+                        'shimmer': 'shimmer 2s infinite',
+                        'float': 'float 3s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        shimmer: {
+                            '0%': { transform: 'translateX(-100%)' },
+                            '100%': { transform: 'translateX(100%)' },
+                        },
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0px)' },
+                            '50%': { transform: 'translateY(-2px)' },
+                        }
+                    },
+                    backgroundImage: {
+                        'card-gradient': 'linear-gradient(135deg, rgba(12, 12, 12, 0.8) 0%, rgba(26, 26, 26, 0.9) 100%)',
+                        'card-border': 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent)',
                     },
                     backdropBlur: {
-                        xs: '2px'
+                        'card': '12px',
                     }
                 }
             }
         }
-
-        // Add custom animations
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(10px); }
-                to { opacity: 1; transform: translateY(0); }
-            }
-            @keyframes slideUp {
-                from { transform: translateY(20px); opacity: 0; }
-                to { transform: translateY(0); opacity: 1; }
-            }
-            .glass-effect {
-                backdrop-filter: blur(10px);
-                background: rgba(31, 41, 55, 0.8);
-                border: 1px solid rgba(75, 85, 99, 0.3);
-            }
-            .progress-glow {
-                box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
-            }
-        `;
-        document.head.appendChild(style);
     </script>
 </head>
-<body class="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white min-h-screen">
-    <!-- Initial Loading Screen -->
-    <div id="initialLoader" class="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center z-50">
+<body class="bg-custom-dark text-gray-200 min-h-screen font-sans">
+    <div id="initialLoader" class="fixed inset-0 bg-custom-dark flex items-center justify-center z-50">
         <div class="text-center">
-            <div class="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <h2 class="text-2xl font-semibold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent mb-2">Loading Dashboard</h2>
-            <p class="text-gray-400">Fetching system data...</p>
+            <div class="w-10 h-10 border-4 border-gray-600 border-t-indigo-500 rounded-full animate-spin mx-auto mb-4"></div>
+            <div class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent font-medium">Loading Dashboard...</div>
         </div>
     </div>
 
-    <div class="container mx-auto p-6">
-        <!-- Header -->
-        <div class="mb-8 text-center">
-            <h1 class="text-5xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent mb-3">Raspberry Pi 4B Dashboard</h1>
-            <p class="text-gray-300 text-lg" id="lastUpdated">Last updated: --</p>
-        </div>
-
-        <!-- Status Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            <!-- System Info Card -->
-            <div class="glass-effect rounded-xl p-6 shadow-2xl hover:shadow-blue-500/10 transition-all duration-300 animate-fade-in">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-semibold">System Info</h2>
-                    <div class="w-3 h-3 bg-green-500 rounded-full animate-pulse-slow"></div>
+    <div class="max-w-7xl mx-auto p-6">
+        <div class="text-center mb-10">
+            <h1 class="text-3xl font-semibold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2 tracking-tight">Raspberry Pi Dashboard</h1>
+            
+            <div class="flex items-center justify-center mb-4">
+                <div class="flex items-center gap-2 px-4 py-2 text-sm text-gray-300">
+                    <div class="w-2 h-2 bg-emerald-500 rounded-full shadow-lg shadow-emerald-500/50"></div>
+                    <span id="lastUpdated">Last updated: --</span>
                 </div>
-                <div class="space-y-3">
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Hostname:</span>
-                        <span id="hostname">raspberry-pi</span>
+                <button id="refreshBtn" class="bg-card-gradient backdrop-blur-card border border-white/10 text-white px-3 py-1.5 rounded-lg font-medium transition-all duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:shadow-lg hover:shadow-black/30 disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none group relative overflow-hidden before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-px before:bg-card-border" title="Refresh Dashboard">
+                    <svg class="w-5 h-5 transition-transform duration-300 group-hover:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
+            <!-- System Info Card -->
+            <div class="bg-card-gradient backdrop-blur-card border border-white/10 rounded-2xl p-6 relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:shadow-2xl hover:shadow-black/30 before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-px before:bg-card-border">
+                <div class="flex items-center gap-2 text-lg font-semibold text-white mb-5">
+                    <img src="./static/icons/raspberry-pi.svg" alt="Raspberry Pi" class="w-8 h-8">
+                    System Info
+                </div>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Hostname</span>
+                        <span class="text-white font-medium font-mono text-sm" id="hostname">--</span>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Uptime:</span>
-                        <span id="uptime">--</span>
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Uptime</span>
+                        <span class="text-white font-medium font-mono text-sm" id="uptime">--</span>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Platform:</span>
-                        <span id="platform">--</span>
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Platform</span>
+                        <span class="text-white font-medium font-mono text-sm" id="platform">--</span>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Architecture:</span>
-                        <span id="architecture">--</span>
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Architecture</span>
+                        <span class="text-white font-medium font-mono text-sm" id="architecture">--</span>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Date:</span>
-                        <span id="currentDate">--</span>
+                    <div class="flex justify-between items-center py-2">
+                        <span class="text-gray-400 text-sm">Current Time</span>
+                        <span class="text-white font-medium font-mono text-sm" id="currentDate">--</span>
                     </div>
                 </div>
             </div>
 
             <!-- CPU Card -->
-            <div class="glass-effect rounded-xl p-6 shadow-2xl hover:shadow-blue-500/10 transition-all duration-300 animate-fade-in">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-semibold">CPU</h2>
-                    <div class="w-3 h-3 bg-blue-500 rounded-full animate-pulse-slow"></div>
+            <div class="bg-card-gradient backdrop-blur-card border border-white/10 rounded-2xl p-6 relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:shadow-2xl hover:shadow-black/30 before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-px before:bg-card-border">
+                <div class="flex items-center gap-2 text-lg font-semibold text-white mb-5">
+                    <img width="32" height="32" src="https://img.icons8.com/color/48/smartphone-cpu.png" alt="smartphone-cpu"/>
+                    CPU
                 </div>
-                <div class="space-y-3">
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Temperature:</span>
-                        <span id="cpuTemp" class="font-mono">--°C</span>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Temperature</span>
+                        <span class="text-white font-medium font-mono text-sm" id="cpuTemp">--°C</span>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Usage:</span>
-                        <span id="cpuUsage" class="font-mono">--%</span>
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Cores</span>
+                        <span class="text-white font-medium font-mono text-sm" id="cpuCores">--</span>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Cores:</span>
-                        <span id="cpuCores" class="font-mono">--</span>
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Frequency</span>
+                        <span class="text-white font-medium font-mono text-sm" id="cpuFreq">--</span>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Frequency:</span>
-                        <span id="cpuFreq" class="font-mono">-- MHz</span>
-                    </div>
-                    <div class="w-full bg-gray-700/50 rounded-full h-3 shadow-inner">
-                        <div id="cpuBar" class="bg-gradient-to-r from-blue-400 to-blue-600 h-3 rounded-full transition-all duration-700 progress-glow" style="width: 0%"></div>
-                    </div>
-                    <div class="text-xs text-gray-300 mt-2 font-medium">
-                        <span id="cpuPercent">0%</span> used
+                    <div class="mt-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-gray-400 text-sm">Usage</span>
+                            <span class="text-white font-medium font-mono text-sm" id="cpuPercent">0%</span>
+                        </div>
+                        <div class="w-full h-2 bg-white/10 rounded-full overflow-hidden relative">
+                            <div class="h-full bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full transition-all duration-700 ease-out relative" id="cpuBar" style="width: 0%">
+                                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <!-- Memory Card -->
-            <div class="glass-effect rounded-xl p-6 shadow-2xl hover:shadow-purple-500/10 transition-all duration-300 animate-fade-in">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-semibold">Memory</h2>
-                    <div class="w-3 h-3 bg-purple-500 rounded-full animate-pulse-slow"></div>
+            <div class="bg-card-gradient backdrop-blur-card border border-white/10 rounded-2xl p-6 relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:shadow-2xl hover:shadow-black/30 before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-px before:bg-card-border">
+                <div class="flex items-center gap-2 text-lg font-semibold text-white mb-5">
+                    <img width="32" height="32" src="https://img.icons8.com/external-flaticons-flat-flat-icons/64/external-ram-computer-science-flaticons-flat-flat-icons.png" alt="external-ram-computer-science-flaticons-flat-flat-icons"/>
+                    Memory
                 </div>
-                <div class="space-y-3">
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Used:</span>
-                        <span id="memUsed" class="font-mono">-- GB</span>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Used</span>
+                        <span class="text-white font-medium font-mono text-sm" id="memUsed">-- GB</span>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Free:</span>
-                        <span id="memFree" class="font-mono">-- GB</span>
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Available</span>
+                        <span class="text-white font-medium font-mono text-sm" id="memFree">-- GB</span>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Total:</span>
-                        <span id="memTotal" class="font-mono">-- GB</span>
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Total</span>
+                        <span class="text-white font-medium font-mono text-sm" id="memTotal">-- GB</span>
                     </div>
-                    <div class="w-full bg-gray-700/50 rounded-full h-3 shadow-inner">
-                        <div id="memBar" class="bg-gradient-to-r from-purple-400 to-purple-600 h-3 rounded-full transition-all duration-700 progress-glow" style="width: 0%"></div>
-                    </div>
-                    <div class="text-xs text-gray-300 mt-2 font-medium">
-                        <span id="memPercent">0%</span> used
+                    <div class="mt-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-gray-400 text-sm">Usage</span>
+                            <span class="text-white font-medium font-mono text-sm" id="memPercent">0%</span>
+                        </div>
+                        <div class="w-full h-2 bg-white/10 rounded-full overflow-hidden relative">
+                            <div class="h-full bg-gradient-to-r from-purple-500 to-purple-600 rounded-full transition-all duration-700 ease-out relative" id="memBar" style="width: 0%">
+                                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <!-- Storage Card -->
-            <div class="glass-effect rounded-xl p-6 shadow-2xl hover:shadow-yellow-500/10 transition-all duration-300 animate-fade-in">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-semibold">Root Storage</h2>
-                    <div class="w-3 h-3 bg-yellow-500 rounded-full animate-pulse-slow"></div>
+            <div class="bg-card-gradient backdrop-blur-card border border-white/10 rounded-2xl p-6 relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:shadow-2xl hover:shadow-black/30 before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-px before:bg-card-border">
+                <div class="flex items-center gap-2 text-lg font-semibold text-white mb-5">
+                    <img width="32" height="32" src="https://img.icons8.com/external-smashingstocks-isometric-smashing-stocks/55/external-sd-card-bigdata-smashingstocks-isometric-smashing-stocks.png" alt="external-sd-card-bigdata-smashingstocks-isometric-smashing-stocks"/>
+                    Root Storage
                 </div>
-                <div class="space-y-3">
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Used:</span>
-                        <span id="diskUsed" class="font-mono">-- GB</span>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Used</span>
+                        <span class="text-white font-medium font-mono text-sm" id="diskUsed">-- GB</span>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Free:</span>
-                        <span id="diskFree" class="font-mono">-- GB</span>
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Available</span>
+                        <span class="text-white font-medium font-mono text-sm" id="diskFree">-- GB</span>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Total:</span>
-                        <span id="diskTotal" class="font-mono">-- GB</span>
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Total</span>
+                        <span class="text-white font-medium font-mono text-sm" id="diskTotal">-- GB</span>
                     </div>
-                    <div class="w-full bg-gray-700/50 rounded-full h-3 shadow-inner">
-                        <div id="diskBar" class="bg-gradient-to-r from-yellow-400 to-orange-500 h-3 rounded-full transition-all duration-700 progress-glow" style="width: 0%"></div>
-                    </div>
-                    <div class="text-xs text-gray-300 mt-2 font-medium">
-                        <span id="diskPercent">0%</span> used
-                    </div>
-                </div>
-            </div>
-
-            <!-- Docker Status Card -->
-            <div class="glass-effect rounded-xl p-6 shadow-2xl hover:shadow-green-500/10 transition-all duration-300 animate-fade-in">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-semibold">Docker</h2>
-                    <div id="dockerStatus" class="w-3 h-3 bg-gray-500 rounded-full"></div>
-                </div>
-                <div class="space-y-3">
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Status:</span>
-                        <span id="dockerStatusText">Checking...</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Containers:</span>
-                        <span id="dockerContainers" class="font-mono">--</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Running:</span>
-                        <span id="dockerRunning" class="font-mono text-green-400">--</span>
-                    </div>
-                    <div id="dockerError" class="text-xs text-red-400 mt-2 hidden">
-                        <!-- Docker error message will appear here -->
+                    <div class="mt-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-gray-400 text-sm">Usage</span>
+                            <span class="text-white font-medium font-mono text-sm" id="diskPercent">0%</span>
+                        </div>
+                        <div class="w-full h-2 bg-white/10 rounded-full overflow-hidden relative">
+                            <div class="h-full bg-gradient-to-r from-amber-500 to-orange-600 rounded-full transition-all duration-700 ease-out relative" id="diskBar" style="width: 0%">
+                                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Cloudflared Status Card -->
-            <div class="glass-effect rounded-xl p-6 shadow-2xl hover:shadow-green-500/10 transition-all duration-300 animate-fade-in">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-semibold">Cloudflared</h2>
-                    <div id="cloudflaredStatus" class="w-3 h-3 bg-gray-500 rounded-full"></div>
+            <!-- Docker Card -->
+            <div class="bg-card-gradient backdrop-blur-card border border-white/10 rounded-2xl p-6 relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:shadow-2xl hover:shadow-black/30 before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-px before:bg-card-border">
+                <div class="flex items-center gap-2 text-lg font-semibold text-white mb-5">
+                    <img width="32" height="32" src="https://img.icons8.com/color/48/docker.png" alt="docker"/>
+                    Docker
                 </div>
-                <div class="space-y-3">
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Status:</span>
-                        <span id="cloudflaredStatusText">Checking...</span>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Status</span>
+                        <span class="text-white font-medium font-mono text-sm" id="dockerStatusText">--</span>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Tunnel:</span>
-                        <span id="cloudflaredTunnel" class="font-mono">--</span>
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Containers</span>
+                        <span class="text-white font-medium font-mono text-sm" id="dockerContainers">--</span>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-400">Uptime:</span>
-                        <span id="cloudflaredUptime" class="font-mono">--</span>
+                    <div class="flex justify-between items-center py-2">
+                        <span class="text-gray-400 text-sm">Running</span>
+                        <span class="text-white font-medium font-mono text-sm" id="dockerRunning">--</span>
                     </div>
+                    <div id="dockerError" class="text-red-400 text-xs mt-3 hidden"></div>
                 </div>
             </div>
-        </div>
 
-        <!-- Disk Devices Section -->
-        <div class="glass-effect rounded-xl p-6 shadow-2xl mb-6 animate-slide-up">
-            <h2 class="text-xl font-semibold mb-4">Storage Devices</h2>
-            <div class="space-y-4" id="diskDevicesList">
-                <!-- Disk devices will be populated here -->
+            <!-- Cloudflare Card -->
+            <div class="bg-card-gradient backdrop-blur-card border border-white/10 rounded-2xl p-6 relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:shadow-2xl hover:shadow-black/30 before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-px before:bg-card-border">
+                <div class="flex items-center gap-2 text-lg font-semibold text-white mb-5">
+                    <img width="32" height="32" src="https://img.icons8.com/external-tal-revivo-shadow-tal-revivo/24/external-cloudflare-provides-content-delivery-network-services-ddos-mitigation-logo-shadow-tal-revivo.png" alt="cloudflare"/>
+                    Cloudflare Tunnel
+                </div>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Status</span>
+                        <span class="text-white font-medium font-mono text-sm" id="cloudflaredStatusText">--</span>
+                    </div>
+                    <div class="flex justify-between items-center py-2 border-b border-white/5">
+                        <span class="text-gray-400 text-sm">Tunnel</span>
+                        <span class="text-white font-medium font-mono text-xs" id="cloudflaredTunnel">--</span>
+                    </div>
+                    <div class="flex justify-between items-center py-2">
+                        <span class="text-gray-400 text-sm">Uptime</span>
+                        <span class="text-white font-medium font-mono text-sm" id="cloudflaredUptime">--</span>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- Services Section -->
-        <div class="glass-effect rounded-xl p-6 shadow-2xl animate-slide-up">
-            <h2 class="text-xl font-semibold mb-4">Services Status</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="servicesList">
-                <!-- Services will be populated here -->
+        <!-- Storage Devices -->
+        <div class="bg-card-gradient backdrop-blur-card border border-white/10 rounded-2xl p-6 mb-6 overflow-hidden before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-px before:bg-card-border">
+            <div class="flex items-center gap-2 text-xl font-semibold text-white mb-5">
+                <img width="32" height="32" src="https://img.icons8.com/fluency/48/hdd.png" alt="hdd"/>
+                Storage Devices
             </div>
+            <div id="diskDevicesList"></div>
         </div>
 
-        <!-- Refresh Button -->
-        <div class="text-center mt-8">
-            <button id="refreshBtn" class="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 px-8 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl">
-                Refresh Data
-            </button>
+        <!-- System Services -->
+        <div class="bg-card-gradient backdrop-blur-card border border-white/10 rounded-2xl p-6 mb-6 overflow-hidden before:content-[''] before:absolute before:top-0 before:left-0 before:right-0 before:h-px before:bg-card-border">
+            <div class="flex items-center gap-2 text-xl font-semibold text-white mb-5">
+                <img width="32" height="32" src="https://img.icons8.com/fluency/48/services.png" alt="services"/>
+                System Services
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" id="servicesList"></div>
+        </div>
+
+        <div class="text-center py-8 text-gray-500 text-sm border-t border-white/5 mt-8">
+            © 2025 Yashwanth C | Raspberry Pi Dashboard
         </div>
     </div>
-
-    <!-- Footer -->
-    <footer class="text-center py-6 mt-8 border-t border-gray-700/50">
-        <p class="text-gray-400 text-sm">© 2025 Developed by Yashwanth C</p>
-    </footer>
 
     <!-- Dashboard JavaScript -->
     <script src="dashboard.js"></script>
