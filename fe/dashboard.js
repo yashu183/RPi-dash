@@ -1,433 +1,483 @@
 /**
  * Raspberry Pi Dashboard - Client-side JavaScript
- * Handles real-time system monitoring and UI updates
+ * Polls the API, renders tiles/lists, and keeps a short in-browser history for sparklines.
  */
 
 // API Configuration - Change this to match your setup
-const API_BASE = 'http(s)://YOUR_PI_IP:5555/api';
+const API_BASE = 'https://dash.yashu.fun/api';
 
-// Track if this is the first load
-let isFirstLoad = true;
+const REFRESH_MS = 30000;
+const HISTORY_LEN = 60;            // 60 samples × 30 s = last 30 minutes
+const HISTORY_KEY = 'rpi-dash-history';
 
-/**
- * Fetch real data from API using the combined endpoint
- */
+// Thresholds: [warning, critical]
+const PCT_LIMITS = [75, 90];
+const TEMP_LIMITS = [60, 70];
+const TEMP_SCALE = [20, 85];        // range drawn by the temperature meter
+
+const $ = (id) => document.getElementById(id);
+const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const num = (v, digits = 1) =>
+    Number.isFinite(v) ? v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : '—';
+
+/** Create an element with text content (never innerHTML for server data). */
+function el(tag, props = {}, ...children) {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) {
+        if (k === 'class') node.className = v;
+        else if (k === 'text') node.textContent = v;
+        else if (k === 'dataset') Object.assign(node.dataset, v);
+        else node.setAttribute(k, v);
+    }
+    for (const child of children) if (child != null) node.append(child);
+    return node;
+}
+
+function levelFor(value, [warn, crit]) {
+    if (!Number.isFinite(value)) return 'normal';
+    if (value >= crit) return 'crit';
+    if (value >= warn) return 'warn';
+    return 'normal';
+}
+
+/** "3 days, 04 hrs, 12 mins, 05 secs" → "3d 4h 12m" */
+function compactUptime(text) {
+    if (typeof text !== 'string') return '—';
+    const m = text.match(/(\d+) days?, (\d+) hrs, (\d+) mins/);
+    if (!m) return text;
+    const [d, h, min] = m.slice(1).map(Number);
+    return d > 0 ? `${d}d ${h}h ${min}m` : h > 0 ? `${h}h ${min}m` : `${min}m`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Data                                                                */
+/* ------------------------------------------------------------------ */
+
+async function getJSON(path) {
+    const res = await fetch(`${API_BASE}${path}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`${path} returned HTTP ${res.status}`);
+    return res.json();
+}
+
 async function fetchSystemData() {
     try {
-        const response = await fetch(`${API_BASE}/all`);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        return data;
+        return await getJSON('/all');
     } catch (error) {
-        console.error('Error fetching system data:', error);
-        // Fallback to individual API calls if /all endpoint fails
-        return await fetchSystemDataIndividually();
+        console.warn('Combined endpoint failed, falling back to individual calls:', error);
+        const parts = ['system', 'cpu', 'memory', 'disk', 'docker', 'cloudflared', 'services'];
+        const results = await Promise.allSettled(parts.map((p) => getJSON(`/${p}`)));
+        if (results.every((r) => r.status === 'rejected')) throw results[0].reason;
+        return Object.fromEntries(parts.map((p, i) => [p, results[i].status === 'fulfilled' ? results[i].value : null]));
     }
 }
 
-/**
- * Fallback: fetch data from individual endpoints
- */
-async function fetchSystemDataIndividually() {
-    const [system, cpu, memory, disk, docker, cloudflared, services] = await Promise.all([
-        fetch(`${API_BASE}/system`).then(r => r.json()),
-        fetch(`${API_BASE}/cpu`).then(r => r.json()),
-        fetch(`${API_BASE}/memory`).then(r => r.json()),
-        fetch(`${API_BASE}/disk`).then(r => r.json()),
-        fetch(`${API_BASE}/docker`).then(r => r.json()),
-        fetch(`${API_BASE}/cloudflared`).then(r => r.json()),
-        fetch(`${API_BASE}/services`).then(r => r.json())
-    ]);
+const history = loadHistory();
 
-    return { system, cpu, memory, disk, docker, cloudflared, services };
+function loadHistory() {
+    const empty = { cpu: [], temp: [], mem: [] };
+    try {
+        const saved = JSON.parse(sessionStorage.getItem(HISTORY_KEY));
+        if (saved && Array.isArray(saved.cpu)) return { ...empty, ...saved };
+    } catch { /* storage unavailable */ }
+    return empty;
 }
 
-/**
- * Update system information section
- */
-function updateSystemInfo(data) {
-    // Update "Last updated" with server time (when data was fetched)
-    const serverTime = data.timestamp || data.system.date;
-    document.getElementById('lastUpdated').textContent = `Last updated: ${serverTime}`;
-
-    // Update current system date with real-time
-    const currentTime = new Date().toLocaleString('en-CA', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-    }).replace(',', '');
-
-    // Update the system date field to show current time
-    document.getElementById('currentDate').textContent = currentTime;
-
-    // System info
-    document.getElementById('hostname').textContent = data.system.hostname;
-    document.getElementById('uptime').textContent = data.system.uptime;
-    document.getElementById('platform').textContent = data.system.platform;
-    document.getElementById('architecture').textContent = data.system.architecture;
+function pushHistory(key, value) {
+    if (!Number.isFinite(value)) return;
+    const series = history[key];
+    series.push({ t: Date.now(), v: value });
+    if (series.length > HISTORY_LEN) series.splice(0, series.length - HISTORY_LEN);
+    try { sessionStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch { /* ignore */ }
 }
 
-/**
- * Update CPU information and visual indicators
- */
-function updateCPUInfo(data) {
-    const cpuTemp = data.cpu.temperature;
-    const cpuUsage = data.cpu.usage;
+/* ------------------------------------------------------------------ */
+/* KPI tiles                                                           */
+/* ------------------------------------------------------------------ */
 
-    if (cpuTemp !== null) {
-        const tempElement = document.getElementById('cpuTemp');
-        tempElement.textContent = `${cpuTemp}°C`;
-        // Simple color coding for CPU temp
-        if (cpuTemp > 70) {
-            tempElement.className = 'status-error';
-        } else if (cpuTemp > 60) {
-            tempElement.className = 'status-warn';
-        } else {
-            tempElement.className = '';
-        }
-    } else {
-        document.getElementById('cpuTemp').textContent = 'N/A';
-    }
+function setTile(id, { value, digits = 1, sub, foot, meterPct, meterNow, level, flagText }) {
+    const tile = $(id);
+    tile.querySelector('[data-value]').textContent = num(value, digits);
+    if (sub != null) tile.querySelector('[data-sub]').textContent = sub;
+    if (foot != null) tile.querySelector('[data-foot]').textContent = foot;
 
-    document.getElementById('cpuCores').textContent = data.cpu.cores;
-    document.getElementById('cpuFreq').textContent = `${data.cpu.frequency} MHz`;
-    document.getElementById('cpuPercent').textContent = `${cpuUsage}%`;
-    
-    // Update modern progress bar
-    document.getElementById('cpuBar').style.width = `${cpuUsage}%`;
+    const meter = tile.querySelector('.meter');
+    const pct = Math.max(0, Math.min(100, Number.isFinite(meterPct) ? meterPct : 0));
+    meter.querySelector('[data-bar]').style.width = `${pct}%`;
+    meter.setAttribute('aria-valuenow', String(Number.isFinite(meterNow) ? meterNow : 0));
+    meter.setAttribute('aria-valuetext', Number.isFinite(value) ? `${num(value, digits)}${flagText ? `, ${flagText}` : ''}` : 'No data');
+    meter.dataset.state = level;
+
+    const flag = tile.querySelector('[data-flag]');
+    flag.hidden = level === 'normal';
+    flag.dataset.state = level;
+    flag.textContent = level === 'crit' ? '▲ Critical' : level === 'warn' ? '▲ High' : '';
 }
 
-/**
- * Update memory information and progress bar
- */
-function updateMemoryInfo(data) {
-    const memUsedGB = data.memory.used;
-    const memTotalGB = data.memory.total;
-    const memAvailableGB = data.memory.available;
-    const memPercent = data.memory.percent;
-
-    document.getElementById('memUsed').textContent = `${memUsedGB.toFixed(2)} GB`;
-    document.getElementById('memFree').textContent = `${memAvailableGB.toFixed(2)} GB`;
-    document.getElementById('memTotal').textContent = `${memTotalGB.toFixed(2)} GB`;
-    document.getElementById('memPercent').textContent = `${memPercent.toFixed(1)}%`;
-    
-    // Update modern progress bar
-    document.getElementById('memBar').style.width = `${memPercent}%`;
-}
-
-/**
- * Update storage information for root and boot partitions
- */
-function updateStorageInfo(data) {
-    // Find all relevant partitions (root and boot)
-    const relevantPartitions = [];
-
-    data.disk.devices.forEach(device => {
-        if (device.children) {
-            device.children.forEach(child => {
-                if (child.mountpoint === '/' || (child.mountpoint && child.mountpoint.startsWith('/boot'))) {
-                    relevantPartitions.push(child);
-                }
-            });
-        }
+function updateCPU(cpu) {
+    if (!cpu) return;
+    const level = levelFor(cpu.usage, PCT_LIMITS);
+    const freq = Number.isFinite(cpu.frequency) ? `${Math.round(cpu.frequency).toLocaleString()} MHz` : 'freq n/a';
+    setTile('tileCpu', {
+        value: cpu.usage, meterPct: cpu.usage, meterNow: cpu.usage, level,
+        sub: `${cpu.cores ?? '—'} cores · ${freq}`,
     });
+    pushHistory('cpu', cpu.usage);
 
-    if (relevantPartitions.length > 0) {
-        // Combine usage statistics from all relevant partitions
-        let totalUsed = 0;
-        let totalFree = 0;
-        let totalSize = 0;
+    const temp = cpu.temperature;
+    const tLevel = levelFor(temp, TEMP_LIMITS);
+    const [lo, hi] = TEMP_SCALE;
+    setTile('tileTemp', {
+        value: temp, level: tLevel, meterNow: temp,
+        meterPct: Number.isFinite(temp) ? ((temp - lo) / (hi - lo)) * 100 : 0,
+        sub: temp == null ? 'Sensor not available' : `Warns at ${TEMP_LIMITS[0]} °C · throttles at 80 °C`,
+    });
+    pushHistory('temp', temp);
+}
 
-        relevantPartitions.forEach(partition => {
-            if (partition.usage) {
-                totalUsed += partition.usage.used;
-                totalFree += partition.usage.free;
-                totalSize += partition.usage.total;
-            }
+function updateMemory(mem) {
+    if (!mem) return;
+    setTile('tileMem', {
+        value: mem.percent, meterPct: mem.percent, meterNow: mem.percent,
+        level: levelFor(mem.percent, PCT_LIMITS),
+        sub: `${num(mem.used, 2)} of ${num(mem.total, 2)} GB used`,
+    });
+    pushHistory('mem', mem.percent);
+}
+
+/** Usage objects can be the string 'unavailable' from the API — treat anything else as missing. */
+const validUsage = (u) => u && typeof u === 'object' && Number.isFinite(u.percent);
+
+function updateRootStorage(disk) {
+    if (!disk) return;
+    const parts = [];
+    for (const device of disk.devices || []) {
+        if (validUsage(device.usage) && device.mountpoint === '/') parts.push(device.usage);
+        for (const child of device.children || []) {
+            const mp = child.mountpoint || '';
+            if ((mp === '/' || mp.startsWith('/boot')) && validUsage(child.usage)) parts.push(child.usage);
+        }
+    }
+    if (!parts.length) {
+        setTile('tileDisk', { value: NaN, level: 'normal', sub: 'Root partition not found', foot: '' });
+        return;
+    }
+    const used = parts.reduce((s, u) => s + u.used, 0);
+    const total = parts.reduce((s, u) => s + u.total, 0);
+    const free = parts.reduce((s, u) => s + u.free, 0);
+    const pct = total > 0 ? (used / total) * 100 : 0;
+    setTile('tileDisk', {
+        value: pct, meterPct: pct, meterNow: Math.round(pct),
+        level: levelFor(pct, PCT_LIMITS),
+        sub: `${num(used)} of ${num(total)} GB used`,
+        foot: `${num(free)} GB free · root + boot`,
+    });
+}
+
+/* ------------------------------------------------------------------ */
+/* Sparklines                                                          */
+/* ------------------------------------------------------------------ */
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const sparkKeys = { tileCpu: 'cpu', tileTemp: 'temp', tileMem: 'mem' };
+
+function svg(tag, attrs) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    return node;
+}
+
+function renderSpark(container, series) {
+    container.replaceChildren();
+    if (series.length < 2) {
+        container.append(el('p', { class: 'spark-empty', text: 'Trend appears after a few refreshes' }));
+        return;
+    }
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    const pad = 4;                                  // room for the end-dot ring
+    const values = series.map((p) => p.v);
+    let lo, hi;
+    if (container.dataset.max) {
+        lo = 0; hi = Number(container.dataset.max);
+    } else {
+        lo = Math.min(...values) - 2; hi = Math.max(...values) + 2;
+    }
+    const x = (i) => pad + (i / (series.length - 1)) * (w - pad * 2);
+    const y = (v) => h - pad - ((v - lo) / (hi - lo || 1)) * (h - pad * 2);
+
+    const pts = series.map((p, i) => [x(i), y(p.v)]);
+    const line = pts.map(([px, py], i) => `${i ? 'L' : 'M'}${px.toFixed(1)},${py.toFixed(1)}`).join('');
+    const area = `${line}L${pts.at(-1)[0].toFixed(1)},${h}L${pts[0][0].toFixed(1)},${h}Z`;
+
+    const root = svg('svg', { viewBox: `0 0 ${w} ${h}`, 'aria-hidden': 'true' });
+    root.append(
+        svg('path', { class: 'area', d: area }),
+        svg('path', { class: 'line', d: line }),
+    );
+    const guide = svg('line', { class: 'guide', y1: 0, y2: h, visibility: 'hidden' });
+    const dot = svg('circle', { class: 'dot', r: 4, cx: pts.at(-1)[0], cy: pts.at(-1)[1] });
+    root.append(guide, dot);
+    container.append(root);
+
+    container._spark = { pts, series, guide, dot };
+}
+
+function renderAllSparks() {
+    for (const [tileId, key] of Object.entries(sparkKeys)) {
+        renderSpark($(tileId).querySelector('[data-spark]'), history[key]);
+    }
+}
+
+function wireSparkHover() {
+    const tip = $('sparkTip');
+    document.querySelectorAll('[data-spark]').forEach((container) => {
+        const reset = () => {
+            tip.hidden = true;
+            const s = container._spark;
+            if (!s) return;
+            s.guide.setAttribute('visibility', 'hidden');
+            s.dot.setAttribute('cx', s.pts.at(-1)[0]);
+            s.dot.setAttribute('cy', s.pts.at(-1)[1]);
+        };
+        container.addEventListener('pointermove', (e) => {
+            const s = container._spark;
+            if (!s) return;
+            const rect = container.getBoundingClientRect();
+            const px = e.clientX - rect.left;
+            let best = 0;
+            s.pts.forEach(([x], i) => { if (Math.abs(x - px) < Math.abs(s.pts[best][0] - px)) best = i; });
+            const [bx, by] = s.pts[best];
+            s.guide.setAttribute('x1', bx); s.guide.setAttribute('x2', bx);
+            s.guide.setAttribute('visibility', 'visible');
+            s.dot.setAttribute('cx', bx); s.dot.setAttribute('cy', by);
+
+            const p = s.series[best];
+            tip.replaceChildren(el('strong', { text: `${num(p.v)}${container.dataset.unit}` }), ` · ${timeFmt.format(p.t)}`);
+            tip.style.left = `${rect.left + bx}px`;
+            tip.style.top = `${rect.top + by}px`;
+            tip.hidden = false;
         });
-
-        const combinedPercent = totalSize > 0 ? (totalUsed / totalSize) * 100 : 0;
-
-        document.getElementById('diskUsed').textContent = `${totalUsed.toFixed(1)} GB`;
-        document.getElementById('diskFree').textContent = `${totalFree.toFixed(1)} GB`;
-        document.getElementById('diskTotal').textContent = `${totalSize.toFixed(1)} GB`;
-        document.getElementById('diskPercent').textContent = `${combinedPercent.toFixed(1)}%`;
-        
-        // Update modern progress bar
-        document.getElementById('diskBar').style.width = `${combinedPercent}%`;
-    } else {
-        document.getElementById('diskUsed').textContent = 'N/A';
-        document.getElementById('diskFree').textContent = 'N/A';
-        document.getElementById('diskTotal').textContent = 'N/A';
-        document.getElementById('diskPercent').textContent = '0%';
-        
-        // Update modern progress bar
-        document.getElementById('diskBar').style.width = '0%';
-    }
-}
-
-/**
- * Update Docker status and container information
- */
-function updateDockerInfo(data) {
-    const dockerStatusText = document.getElementById('dockerStatusText');
-
-    if (data.docker.status === 'running') {
-        dockerStatusText.textContent = 'Running';
-        dockerStatusText.className = 'text-emerald-400 font-medium font-mono text-sm';
-    } else if (data.docker.status === 'stopped') {
-        dockerStatusText.textContent = 'Stopped';
-        dockerStatusText.className = 'text-red-400 font-medium font-mono text-sm';
-    } else {
-        dockerStatusText.textContent = 'Unknown';
-        dockerStatusText.className = 'text-gray-400 font-medium font-mono text-sm';
-    }
-
-    // Update container counts with colors
-    const dockerContainersEl = document.getElementById('dockerContainers');
-    const dockerRunningEl = document.getElementById('dockerRunning');
-    
-    const totalContainers = data.docker.containers || 0;
-    const runningContainers = data.docker.running || 0;
-    const stoppedContainers = totalContainers - runningContainers;
-    
-    dockerContainersEl.textContent = totalContainers;
-    dockerContainersEl.className = 'text-white font-medium font-mono text-sm';
-    
-    // Show running containers in green
-    dockerRunningEl.innerHTML = `<span class="text-emerald-400">${runningContainers}</span>`;
-    
-    // Add stopped/exited containers display if there are any
-    if (stoppedContainers > 0) {
-        dockerRunningEl.innerHTML += ` / <span class="text-red-400">${stoppedContainers} stopped</span>`;
-    }
-
-    // Show Docker error if present
-    const dockerErrorEl = document.getElementById('dockerError');
-    if (data.docker.error) {
-        dockerErrorEl.textContent = data.docker.error;
-        dockerErrorEl.style.display = 'block';
-    } else {
-        dockerErrorEl.style.display = 'none';
-    }
-}
-
-/**
- * Update Cloudflared tunnel status
- */
-function updateCloudflaredInfo(data) {
-    const cloudflaredStatusText = document.getElementById('cloudflaredStatusText');
-
-    if (data.cloudflared.status === 'connected') {
-        cloudflaredStatusText.textContent = 'Connected';
-        cloudflaredStatusText.className = 'text-emerald-400 font-medium font-mono text-sm';
-    } else if (data.cloudflared.status === 'disconnected') {
-        cloudflaredStatusText.textContent = 'Disconnected';
-        cloudflaredStatusText.className = 'text-red-400 font-medium font-mono text-sm';
-    } else {
-        cloudflaredStatusText.textContent = 'Unknown';
-        cloudflaredStatusText.className = 'text-gray-400 font-medium font-mono text-sm';
-    }
-
-    document.getElementById('cloudflaredTunnel').textContent = data.cloudflared.tunnel;
-    document.getElementById('cloudflaredUptime').textContent = data.cloudflared.uptime;
-}
-
-/**
- * Update services status list
- */
-function updateServicesInfo(data) {
-    const servicesList = document.getElementById('servicesList');
-    servicesList.innerHTML = '';
-
-    data.services.forEach(service => {
-        const serviceEl = document.createElement('div');
-        serviceEl.className = 'bg-black/20 border border-white/10 rounded-lg p-3 flex justify-between items-center hover:bg-black/30 transition-colors duration-200';
-
-        let statusDot, statusText;
-        
-        // Simple status indicators
-        switch(service.status) {
-            case 'running':
-            case 'active':
-                statusDot = '<div class="w-2 h-2 bg-emerald-500 rounded-full"></div>';
-                statusText = '<span class="text-emerald-400 font-medium text-xs">Running</span>';
-                break;
-            case 'stopped':
-            case 'inactive':
-                statusDot = '<div class="w-2 h-2 bg-red-500 rounded-full"></div>';
-                statusText = '<span class="text-red-400 font-medium text-xs">Stopped</span>';
-                break;
-            default:
-                statusDot = '<div class="w-2 h-2 bg-gray-500 rounded-full"></div>';
-                statusText = '<span class="text-gray-400 font-medium text-xs">Unknown</span>';
-        }
-
-        serviceEl.innerHTML = `
-            <span class="text-white font-medium text-sm">${service.display_name}</span>
-            <div class="flex items-center gap-2">
-                ${statusDot}
-                ${statusText}
-            </div>
-        `;
-        servicesList.appendChild(serviceEl);
+        container.addEventListener('pointerleave', reset);
     });
+    new ResizeObserver(() => renderAllSparks()).observe($('tileCpu'));
 }
 
-/**
- * Update disk devices information (excluding mmcblk devices shown in root storage)
- */
-function updateDiskDevicesInfo(data) {
-    const diskDevicesList = document.getElementById('diskDevicesList');
-    let html = `
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="text-gray-400 border-b border-white/10">
-                        <th class="text-left py-3 font-medium">Device</th>
-                        <th class="text-left py-3 font-medium">Size</th>
-                        <th class="text-left py-3 font-medium">Mount Point</th>
-                        <th class="text-left py-3 font-medium">Usage</th>
-                    </tr>
-                </thead>
-                <tbody>
-    `;
+/* ------------------------------------------------------------------ */
+/* Status cards                                                        */
+/* ------------------------------------------------------------------ */
 
-    data.disk.devices.filter(device => !device.name.startsWith('mmcblk')).forEach(device => {
-        html += `
-            <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
-                <td class="py-3 text-white font-mono font-semibold">${device.name}</td>
-                <td class="py-3 text-gray-300">${device.size}</td>
-            </tr>
-        `;
-        
-        if (device.children && device.children.length > 0) {
-            device.children.forEach(partition => {
-                const usage = partition.usage;
-                const usagePercent = usage ? parseFloat(usage.percent.toFixed(1)) : 0;
-                const mountpoint = partition.mountpoint || 'Not mounted';
-                const usageText = usage ? `${usage.used.toFixed(1)}GB / ${usage.total.toFixed(1)}GB` : 'No data';
-                
-                // Determine progress bar color based on usage percentage
-                let progressColor = 'from-emerald-500 to-emerald-600'; // Default green
-                if (usagePercent > 80) {
-                    progressColor = 'from-red-500 to-red-600'; // High usage - red
-                } else if (usagePercent > 60) {
-                    progressColor = 'from-amber-500 to-orange-600'; // Medium usage - orange
-                } else if (usagePercent > 40) {
-                    progressColor = 'from-yellow-500 to-yellow-600'; // Low-medium usage - yellow
-                }
-                
-                html += `
-                    <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
-                        <td class="py-4 text-gray-300 font-mono pl-4">├─ ${partition.name}</td>
-                        <td class="py-4 text-gray-300">${partition.size}</td>
-                        <td class="py-4 text-gray-400">${mountpoint}</td>
-                        <td class="py-4">
-                            <div class="space-y-2">
-                                <div class="flex justify-between items-center">
-                                    <span class="text-gray-300 font-mono text-xs">${usageText}</span>
-                                    <span class="text-white font-medium text-xs">${usagePercent}%</span>
-                                </div>
-                                ${usage ? `
-                                <div class="w-full h-2 bg-white/10 rounded-full overflow-hidden relative">
-                                    <div class="h-full bg-gradient-to-r ${progressColor} rounded-full transition-all duration-700 ease-out relative" style="width: ${usagePercent}%">
-                                        <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
-                                    </div>
-                                </div>
-                                ` : '<div class="text-gray-500 text-xs">No usage data</div>'}
-                            </div>
-                        </td>
-                    </tr>
-                `;
-            });
-        }
-    });
-    
-    html += '</tbody></table></div>';
-    diskDevicesList.innerHTML = html;
+function setStatus(node, state, label) {
+    node.dataset.state = state;
+    node.textContent = label;
 }
 
-/**
- * Hide initial loading screen
- */
-function hideInitialLoader() {
-    if (isFirstLoad) {
-        const initialLoader = document.getElementById('initialLoader');
-        initialLoader.style.opacity = '0';
-        initialLoader.style.transition = 'opacity 0.5s ease-out';
-        setTimeout(() => {
-            initialLoader.style.display = 'none';
-        }, 500);
-        isFirstLoad = false;
+function updateSystem(system) {
+    if (!system) return;
+    $('hostname').textContent = system.hostname || 'Raspberry Pi';
+    document.title = `${system.hostname || 'Raspberry Pi'} · Dashboard`;
+    $('uptime').textContent = compactUptime(system.uptime);
+    $('uptime').title = system.uptime || '';
+    $('platform').textContent = system.platform || '—';
+    $('platform').title = system.platform || '';
+    $('architecture').textContent = system.architecture || '—';
+    $('serverTime').textContent = system.date || '—';
+    $('hostMeta').textContent = [system.platform, system.architecture, system.uptime && `up ${compactUptime(system.uptime)}`]
+        .filter(Boolean).join(' · ');
+}
+
+function updateDocker(docker) {
+    if (!docker) return;
+    const running = docker.status === 'running';
+    setStatus($('dockerStatus'), running ? 'good' : docker.status === 'stopped' ? 'crit' : 'unknown',
+        running ? 'Running' : docker.status === 'stopped' ? 'Stopped' : 'Unknown');
+    $('dockerRunning').textContent = docker.running ?? 0;
+    $('dockerTotal').textContent = docker.containers ?? 0;
+
+    const list = $('containerList');
+    const containers = [...(docker.container_list || [])]
+        .sort((a, b) => (a.status === 'running') - (b.status === 'running') || a.name.localeCompare(b.name));
+    list.replaceChildren(...containers.map((c) => {
+        const state = c.status === 'running' ? 'good' : c.status === 'exited' || c.status === 'dead' ? 'crit' : 'warn';
+        const label = c.status ? c.status[0].toUpperCase() + c.status.slice(1) : 'Unknown';
+        return el('li', {},
+            el('span', { class: 'c-name' }, el('b', { text: c.name, translate: 'no' }), el('small', { text: c.image, translate: 'no' })),
+            el('span', { class: 'status', dataset: { state }, text: label }));
+    }));
+    if (running && !containers.length) list.append(el('li', { class: 'empty', text: 'No containers' }));
+
+    const err = $('dockerError');
+    err.hidden = !docker.error;
+    err.textContent = docker.error ? `Docker unavailable: ${docker.error}` : '';
+}
+
+function updateTunnel(cf) {
+    if (!cf) return;
+    const map = { connected: ['good', 'Connected'], disconnected: ['crit', 'Disconnected'] };
+    const [state, label] = map[cf.status] || ['warn', cf.status === 'error' ? 'Error' : 'Unknown'];
+    setStatus($('tunnelStatus'), state, label);
+    $('tunnelName').textContent = cf.tunnel || '—';
+    $('tunnelUptime').textContent = compactUptime(cf.uptime);
+    $('tunnelUptime').title = cf.uptime || '';
+}
+
+function updateServices(services) {
+    if (!Array.isArray(services)) return;
+    const list = $('servicesList');
+    const up = services.filter((s) => s.status === 'running' || s.status === 'active').length;
+    $('servicesSummary').textContent = services.length ? `${up} of ${services.length} running` : '';
+
+    if (!services.length) {
+        list.replaceChildren(el('li', { class: 'empty', text: 'No services configured in config/services.json' }));
+        return;
     }
+    list.replaceChildren(...services.map((s) => {
+        const [state, label] =
+            s.status === 'running' || s.status === 'active' ? ['good', 'Running'] :
+            s.status === 'stopped' || s.status === 'inactive' ? ['crit', 'Stopped'] : ['unknown', 'Unknown'];
+        return el('li', {},
+            el('span', { class: 's-name' },
+                el('b', { text: s.display_name || s.name, translate: 'no' }),
+                s.description ? el('small', { text: s.description, title: s.description }) : null),
+            el('span', { class: 'status', dataset: { state }, text: label }));
+    }));
 }
 
-/**
- * Main dashboard update function
- */
+function updateDevices(disk) {
+    if (!disk) return;
+    const container = $('deviceList');
+    // The SD card (mmcblk*) is already summarised in the Root storage tile.
+    const devices = (disk.devices || []).filter((d) => !d.name.startsWith('mmcblk'));
+    if (!devices.length) {
+        container.replaceChildren(el('p', { class: 'empty', text: 'No external drives attached.' }));
+        return;
+    }
+    container.replaceChildren(...devices.map((device) => {
+        const parts = device.children?.length ? device.children : [device];
+        return el('div', { class: 'device' },
+            el('div', { class: 'device-head' },
+                el('b', { text: device.name, translate: 'no' }),
+                el('span', { text: `${device.size}${device.type ? ` · ${device.type}` : ''}` })),
+            el('div', { class: 'partitions' }, ...parts.map((p) => {
+                const u = validUsage(p.usage) ? p.usage : null;
+                const level = u ? levelFor(u.percent, PCT_LIMITS) : 'normal';
+                const name = el('span', { class: 'p-name' },
+                    el('b', { text: p.name, translate: 'no' }),
+                    el('small', { text: p.mountpoint ? `${p.mountpoint} · ${p.size}` : `Not mounted · ${p.size}` }));
+                if (!u) return el('div', { class: 'partition' }, name, el('span', { class: 'p-none', text: 'No usage data' }), el('span'));
+                const meter = el('div', {
+                    class: 'meter', role: 'meter', 'aria-label': `${p.name} usage`,
+                    'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(u.percent),
+                    dataset: { state: level },
+                }, el('span', { style: `width:${Math.min(100, u.percent)}%` }));
+                const fig = el('span', { class: 'p-fig' }, `${num(u.used)} / ${num(u.total)} GB`, el('strong', { text: `${num(u.percent)}%` }));
+                return el('div', { class: 'partition' }, name, meter, fig);
+            })));
+    }));
+}
+
+/* ------------------------------------------------------------------ */
+/* Overall health                                                      */
+/* ------------------------------------------------------------------ */
+
+function updateHealth(data) {
+    const issues = [];
+    let worst = 'good';
+    const flag = (level, msg) => {
+        if (level === 'normal') return;
+        issues.push(msg);
+        if (level === 'crit' || worst !== 'crit') worst = level === 'crit' ? 'crit' : 'warn';
+    };
+    if (data.cpu) {
+        flag(levelFor(data.cpu.temperature, TEMP_LIMITS), `CPU at ${data.cpu.temperature} °C`);
+        flag(levelFor(data.cpu.usage, PCT_LIMITS), `CPU usage ${data.cpu.usage}%`);
+    }
+    if (data.memory) flag(levelFor(data.memory.percent, PCT_LIMITS), `Memory ${data.memory.percent}%`);
+    for (const s of data.services || []) {
+        if (s.status === 'stopped' || s.status === 'inactive') flag('crit', `${s.display_name || s.name} stopped`);
+    }
+    if (data.docker && data.docker.status !== 'running') flag('crit', 'Docker not running');
+    if (data.cloudflared && data.cloudflared.status !== 'connected') flag('crit', 'Tunnel not connected');
+
+    const health = $('health');
+    health.dataset.state = worst;
+    $('healthText').textContent = issues.length === 0 ? 'All systems normal'
+        : issues.length === 1 ? issues[0] : `${issues.length} issues`;
+    health.title = issues.join('\n');
+}
+
+/* ------------------------------------------------------------------ */
+/* Refresh loop                                                        */
+/* ------------------------------------------------------------------ */
+
+let timer = null;
+let nextAt = 0;
+let inFlight = false;
+let lastSuccess = 0;
+
 async function updateDashboard() {
-    const refreshBtn = document.getElementById('refreshBtn');
-
-    // Only show refresh button loading state if not first load
-    if (!isFirstLoad) {
-        refreshBtn.disabled = true;
-        refreshBtn.innerHTML = `
-            <svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-            </svg>
-        `;
-    }
+    if (inFlight) return;
+    inFlight = true;
+    clearTimeout(timer);
+    const btn = $('refreshBtn');
+    btn.disabled = true;
+    btn.classList.add('is-spinning');
+    $('lastUpdated').textContent = 'Updating…';
 
     try {
         const data = await fetchSystemData();
+        updateSystem(data.system);
+        updateCPU(data.cpu);
+        updateMemory(data.memory);
+        updateRootStorage(data.disk);
+        updateDocker(data.docker);
+        updateTunnel(data.cloudflared);
+        updateServices(data.services);
+        updateDevices(data.disk);
+        updateHealth(data);
+        renderAllSparks();
 
-        // Update all dashboard sections
-        updateSystemInfo(data);
-        updateCPUInfo(data);
-        updateMemoryInfo(data);
-        updateStorageInfo(data);
-        updateDockerInfo(data);
-        updateCloudflaredInfo(data);
-        updateServicesInfo(data);
-        updateDiskDevicesInfo(data);
-
-        // Hide initial loader on first successful load
-        hideInitialLoader();
-
+        lastSuccess = Date.now();
+        $('errorBanner').hidden = true;
+        $('main').setAttribute('aria-busy', 'false');
     } catch (error) {
         console.error('Failed to update dashboard:', error);
-        // Show error in the UI
-        document.getElementById('lastUpdated').textContent = `Error: ${error.message}`;
+        $('errorText').textContent = lastSuccess
+            ? `Can’t reach the Pi (${error.message}). Showing data from ${timeFmt.format(lastSuccess)}; retrying automatically.`
+            : `Can’t reach the Pi (${error.message}). Check that the API is running at ${API_BASE}; retrying automatically.`;
+        $('errorBanner').hidden = false;
+        $('health').dataset.state = 'crit';
+        $('healthText').textContent = 'Offline';
     } finally {
-        // Only update refresh button if not first load
-        if (!isFirstLoad) {
-            refreshBtn.disabled = false;
-            refreshBtn.innerHTML = `
-                <svg class="w-5 h-5 transition-transform duration-300 group-hover:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                </svg>
-            `;
-        }
+        inFlight = false;
+        btn.disabled = false;
+        btn.classList.remove('is-spinning');
+        $('lastUpdated').textContent = lastSuccess ? `Updated ${timeFmt.format(lastSuccess)}` : 'Not updated yet';
+        schedule();
     }
 }
 
-/**
- * Initialize dashboard when DOM is loaded
- */
-document.addEventListener('DOMContentLoaded', function() {
-    // Event listeners
-    document.getElementById('refreshBtn').addEventListener('click', updateDashboard);
+function schedule() {
+    clearTimeout(timer);
+    if (document.hidden) return;            // resume on visibilitychange
+    nextAt = Date.now() + REFRESH_MS;
+    timer = setTimeout(updateDashboard, REFRESH_MS);
+}
 
-    // Auto-refresh every 30 seconds
-    setInterval(updateDashboard, 30000);
+function tickCountdown() {
+    const secs = Math.max(0, Math.ceil((nextAt - Date.now()) / 1000));
+    $('nextRefresh').textContent = inFlight || document.hidden || !nextAt ? '' : `next in ${secs}s`;
+}
 
-    // Initial load
+document.addEventListener('DOMContentLoaded', () => {
+    $('year').textContent = new Date().getFullYear();
+    $('refreshBtn').addEventListener('click', updateDashboard);
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) clearTimeout(timer);
+        else if (Date.now() - lastSuccess > REFRESH_MS) updateDashboard();
+        else schedule();
+    });
+    setInterval(tickCountdown, 1000);
+    wireSparkHover();
+    renderAllSparks();
     updateDashboard();
 });

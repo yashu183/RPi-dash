@@ -1,3 +1,5 @@
 /be/.venv/*
 
 .vscode/*
+
+.env

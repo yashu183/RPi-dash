@@ -42,7 +42,7 @@ A lightweight, real-time dashboard for monitoring Raspberry Pi system metrics an
 ### Frontend
 - **Vanilla HTML5/CSS3/JavaScript** (no framework dependencies)
 - **Modular JavaScript** - Separated into external files for better maintainability
-- **Tailwind CSS** via CDN for styling
+- **Plain CSS** (`fe/static/dashboard.css`), no build step or CDN
 - **Responsive design** with CSS Grid and Flexbox
 - **ES6+ JavaScript** for modern browser features
 
@@ -51,7 +51,6 @@ A lightweight, real-time dashboard for monitoring Raspberry Pi system metrics an
 - Raspberry Pi (tested on Pi 4B) running Raspberry Pi OS
 - Python 3.7 or higher
 - pip (Python package installer)
-- Internet connection for Tailwind CSS CDN
 
 ## 🚀 Installation & Setup
 
@@ -186,9 +185,8 @@ Any systemd service can be monitored by adding a new service object to this JSON
 ### Customizing the Dashboard
 
 #### Frontend Styling
-- Edit Tailwind classes in `fe/dashboard.html`
-- Modify the color scheme in the CSS variables
-- Adjust refresh intervals in `fe/dashboard.js` (line 310: `setInterval(updateDashboard, 30000)`)
+- Styles live in `fe/static/dashboard.css`, built on the Linear design system from [awesome-design-md](https://github.com/VoltAgent/awesome-design-md); all colors, radii and fonts are CSS variables at the top
+- Adjust the refresh interval and warning/critical thresholds via the constants at the top of `fe/dashboard.js` (`REFRESH_MS`, `PCT_LIMITS`, `TEMP_LIMITS`)
 
 #### Frontend Logic
 - All JavaScript functionality is in `fe/dashboard.js`
